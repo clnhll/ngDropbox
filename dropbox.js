@@ -47,7 +47,7 @@ angular.module('dropbox', [])
           // Authentication.
           authorize:           authServer + '/1/oauth2/authorize',
           token:               apiServer  + '/1/oauth2/token',
-          signOut:             apiServer  + '/1/unlink_access_token',
+          signOut:             apiServer  + '/1/disable_access_token',
 
           // Accounts.
           accountInfo:         apiServer  + '/1/account/info',
@@ -161,25 +161,25 @@ angular.module('dropbox', [])
          * Adapted from dropbox-js
          */
 
-        function popupSize(popupWidth, popupHeight) {
-          var x0, y0, width, height, popupLeft, popupTop;
-
-          // Metrics for the current browser window.
-          x0 = $window.screenX || $window.screenLeft
-          y0 = $window.screenY || $window.screenTop
-          width = $window.outerWidth || $document.documentElement.clientWidth
-          height = $window.outerHeight || $document.documentElement.clientHeight
-
-          // Computed popup window metrics.
-          popupLeft = Math.round(x0) + (width - popupWidth) / 2
-          popupTop = Math.round(y0) + (height - popupHeight) / 2.5
-          if (popupLeft < x0) { popupLeft = x0 }
-          if (popupTop < y0) { popupTop = y0 }
-
-          return 'width=' + popupWidth + ',height=' + popupHeight + ',' +
-                 'left=' + popupLeft + ',top=' + popupTop + ',' +
-                 'dialog=yes,dependent=yes,scrollbars=yes,location=yes';
-        }
+        // function popupSize(popupWidth, popupHeight) {
+        //   var x0, y0, width, height, popupLeft, popupTop;
+        //
+        //   // Metrics for the current browser window.
+        //   x0 = $window.screenX || $window.screenLeft
+        //   y0 = $window.screenY || $window.screenTop
+        //   width = $window.outerWidth || $document.documentElement.clientWidth
+        //   height = $window.outerHeight || $document.documentElement.clientHeight
+        //
+        //   // Computed popup window metrics.
+        //   popupLeft = Math.round(x0) + (width - popupWidth) / 2
+        //   popupTop = Math.round(y0) + (height - popupHeight) / 2.5
+        //   if (popupLeft < x0) { popupLeft = x0 }
+        //   if (popupTop < y0) { popupTop = y0 }
+        //
+        //   return 'width=' + popupWidth + ',height=' + popupHeight + ',' +
+        //          'left=' + popupLeft + ',top=' + popupTop + ',' +
+        //          'dialog=yes,dependent=yes,scrollbars=yes,location=yes';
+        // }
 
 
         /**
@@ -229,6 +229,7 @@ angular.module('dropbox', [])
 
 
           authenticate: function () {
+            console.log('authenticate called');
             var self = this
               , deferred = $q.defer()
               , authUrl = urls.authorize
@@ -238,22 +239,53 @@ angular.module('dropbox', [])
                         + '&redirect_uri=' + redirectUri
 
             function listener(event) {
-              var response = queryParamsFromUrl(event.data);
-
+              console.log(event)
+              if (event.url) {
+                var response = queryParamsFromUrl(event.url);
+              } else {
+                var response = queryParamsFromUrl(event.data);
+              }
+              console.log(response);
               if (response.access_denied) {
                 deferred.reject(response);
-              }
-
-              else if (response.access_token) {
+              } else if (response.access_token) {
                 oauth = self.oauth = response;
                 deferred.resolve(oauth);
+                if (ionic.Platform.isIOS()) {
+                  self.ref.close()
+                }
               }
-
               $window.removeEventListener('message', listener, false);
             }
 
             $window.addEventListener('message', listener, false);
-            $window.open(authUrl,'_dropboxOauthSigninWindow', popupSize(700, 500));
+            ionic.Platform.ready(function(){
+
+              setTimeout(function() {
+
+
+                console.log('ionic platform ready called')
+
+                var ref = cordova.InAppBrowser.open(authUrl,'_dropboxOauthSigninWindow','location=no');
+                ref.addEventListener('loadstart',function(event) {
+                  if (event.url.indexOf('callback') !== -1) {
+
+                    listener(event);
+                  }
+                  console.log(event)
+                });
+                self.ref = ref;
+              }, 500)
+
+
+            });
+
+            if (!ionic.Platform.isIOS()) {
+              $window.open(authUrl,'_dropboxOauthSigninWindow');
+            }
+
+
+
 
             return deferred.promise;
           },
@@ -264,7 +296,13 @@ angular.module('dropbox', [])
           },
 
 
-          // signOut
+          signOff: function() {
+            var self = this;
+            return POST(urls.signOut, {}, {}).then(function(item) {
+              self.reset();
+              window.localStorage.removeItem('ngStorage-dbOAuth');
+            });
+          },
 
 
           // signOff
@@ -325,7 +363,6 @@ angular.module('dropbox', [])
             return this.stat(path, params);
           },
 
-
           // makeUrl
 
 
@@ -354,6 +391,9 @@ angular.module('dropbox', [])
             return POST(urls.restore + path, null, { rev: rev });
           },
 
+          media: function (path) {
+            return POST(urls.media + path);
+          },
 
           restore: function (path, rev) {
             return this.revertFile(path, rev);
@@ -449,4 +489,3 @@ angular.module('dropbox', [])
 
 
   })
-

@@ -8,7 +8,11 @@
           , pageOrigin = opener.location.origin;
 
         opener.postMessage(pageUrl, pageOrigin);
+        if (window.plugins) {
+          cordova.InAppBrowser.close();
+        } else {
         window.close();
+        }
       });
     </script>
   </head>
